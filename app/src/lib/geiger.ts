@@ -9,13 +9,12 @@ const CLICK_FILES = [
   '/sfx/geiger6.wav',
 ]
 
-/** Random delay between clicks (ms). */
-const MIN_DELAY = 200
-const MAX_DELAY = 600
+const MAX_DELAY = 400
 
 /**
  * Geiger counter audio engine.
- * Plays random click SFX in a loop while coconut detections are active.
+ * Plays random click SFX while coconut detections are active.
+ * Next click schedules after the current clip is at least halfway played.
  */
 export class GeigerEngine {
   private pools: HTMLAudioElement[][] = []
@@ -23,7 +22,6 @@ export class GeigerEngine {
   private timer: ReturnType<typeof setTimeout> | null = null
 
   constructor() {
-    // Pre-create a pool of 2 Audio elements per click file for overlap
     this.pools = CLICK_FILES.map(src => [new Audio(src), new Audio(src)])
   }
 
@@ -48,16 +46,14 @@ export class GeigerEngine {
     const pool = this.pools[poolIdx]
     const el = pool.find(a => a.paused || a.ended) ?? pool[0]
     el.currentTime = 0
-
-    // Wait for clip to finish, then delay, then next
-    const onDone = () => {
-      el.removeEventListener('ended', onDone)
-      if (!this.active) return
-      const delay = MIN_DELAY + Math.random() * (MAX_DELAY - MIN_DELAY)
-      this.timer = setTimeout(() => this.playAndSchedule(), delay)
-    }
-    el.addEventListener('ended', onDone)
     el.play().catch(() => {})
+
+    // Schedule next after at least half the clip duration + random delay
+    const halfDuration = (el.duration && isFinite(el.duration))
+      ? (el.duration * 1000) / 2
+      : 50
+    const delay = halfDuration + Math.random() * MAX_DELAY
+    this.timer = setTimeout(() => this.playAndSchedule(), delay)
   }
 
   private stop(): void {
