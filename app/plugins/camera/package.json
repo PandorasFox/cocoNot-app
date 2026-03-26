@@ -1,0 +1,21 @@
+{
+  "name": "coconot-camera",
+  "version": "1.0.0",
+  "description": "Minimal Capacitor camera preview plugin using CameraX (Android) and AVFoundation (iOS)",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": ["dist/", "ios/", "android/", "Package.swift"],
+  "scripts": {
+    "build": "tsc"
+  },
+  "capacitor": {
+    "ios": { "src": "ios" },
+    "android": { "src": "android" }
+  },
+  "peerDependencies": {
+    "@capacitor/core": "^8.0.0"
+  },
+  "devDependencies": {
+    "typescript": "~5.9.3"
+  }
+}

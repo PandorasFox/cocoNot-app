@@ -23,6 +23,18 @@ def render(size: int) -> Image.Image:
     png_data = cairosvg.svg2png(url=SVG, output_width=size, output_height=size)
     return Image.open(io.BytesIO(png_data)).convert("RGB")
 
+def render_padded(size: int, padding_pct: float = 0.25) -> Image.Image:
+    """Render SVG into center of a larger canvas with padding.
+    Android adaptive icons clip ~25% so the foreground needs safe zone padding."""
+    inner = int(size * (1 - padding_pct))
+    icon = render(inner)
+    # Sample background color from top-left pixel of the full render
+    bg = render(size).getpixel((0, 0))
+    canvas = Image.new("RGB", (size, size), bg)
+    offset = (size - inner) // 2
+    canvas.paste(icon, (offset, offset))
+    return canvas
+
 def main():
     # -- PWA icons --
     icons_dir = os.path.join(ROOT, "public", "icons")
@@ -53,8 +65,8 @@ def main():
 
         for density, px in foreground.items():
             d = f"{android_res}/mipmap-{density}"
-            render(px).save(f"{d}/ic_launcher_foreground.png")
-            print(f"  Android {density} fg: {px}px")
+            render_padded(px).save(f"{d}/ic_launcher_foreground.png")
+            print(f"  Android {density} fg: {px}px (padded)")
     else:
         print("  Android: skipped (android/ not present)")
 

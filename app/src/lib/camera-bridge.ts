@@ -1,25 +1,17 @@
-import { CameraPreview } from '@capacitor-community/camera-preview'
+import { Camera } from 'coconot-camera'
 
 /** Start the rear camera behind the WebView. */
 export async function startCamera(): Promise<void> {
-  await CameraPreview.start({
-    position: 'rear',
-    toBack: true,
-    storeToFile: false,
-    enableHighResolution: false,
-    disableAudio: true,
-    width: window.screen.width,
-    height: window.screen.height,
-  })
+  await Camera.start()
 }
 
 /** Stop the camera preview. */
 export async function stopCamera(): Promise<void> {
-  await CameraPreview.stop()
+  await Camera.stop()
 }
 
-/** Grab a preview frame as base64 JPEG. Silent, no shutter, no autofocus. */
+/** Grab a preview frame as base64 JPEG. */
 export async function captureFrame(): Promise<string> {
-  const result = await CameraPreview.captureSample({ quality: 60 })
-  return result.value
+  const result = await Camera.capture({ quality: 60 })
+  return result.base64
 }

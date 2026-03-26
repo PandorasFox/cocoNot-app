@@ -10,8 +10,8 @@ const CLICK_FILES = [
 ]
 
 /** Random delay between clicks (ms). */
-const MIN_DELAY = 30
-const MAX_DELAY = 120
+const MIN_DELAY = 200
+const MAX_DELAY = 600
 
 /**
  * Geiger counter audio engine.
@@ -36,27 +36,27 @@ export class GeigerEngine {
 
     if (coconutDetected && !this.active) {
       this.active = true
-      this.scheduleNext()
+      this.playAndSchedule()
     } else if (!coconutDetected && this.active) {
       this.stop()
     }
   }
 
-  private scheduleNext(): void {
+  private playAndSchedule(): void {
     if (!this.active) return
-    const delay = MIN_DELAY + Math.random() * (MAX_DELAY - MIN_DELAY)
-    this.timer = setTimeout(() => {
-      this.playClick()
-      this.scheduleNext()
-    }, delay)
-  }
-
-  private playClick(): void {
     const poolIdx = Math.floor(Math.random() * this.pools.length)
     const pool = this.pools[poolIdx]
-    // Pick the first element that's not currently playing, or reuse [0]
     const el = pool.find(a => a.paused || a.ended) ?? pool[0]
     el.currentTime = 0
+
+    // Wait for clip to finish, then delay, then next
+    const onDone = () => {
+      el.removeEventListener('ended', onDone)
+      if (!this.active) return
+      const delay = MIN_DELAY + Math.random() * (MAX_DELAY - MIN_DELAY)
+      this.timer = setTimeout(() => this.playAndSchedule(), delay)
+    }
+    el.addEventListener('ended', onDone)
     el.play().catch(() => {})
   }
 
