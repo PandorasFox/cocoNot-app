@@ -6,4 +6,4 @@ const Ocr = registerPlugin<OcrPlugin>('Ocr', {
 })
 
 export { Ocr }
-export type { OcrPlugin, OcrWord } from './definitions'
+export type { OcrPlugin, OcrWord, BarcodeHit, OcrResult } from './definitions'

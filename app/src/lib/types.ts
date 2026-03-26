@@ -11,6 +11,7 @@ export interface OcrHit {
 /** Persistent hitbox entry with TTL tracking for overlay smoothing. */
 export interface HitboxEntry {
   key: string
+  kind: 'coconut' | 'barcode'
   x: number
   y: number
   w: number

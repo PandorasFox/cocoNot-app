@@ -3,10 +3,11 @@ import type { OcrHit } from '../lib/types'
 
 interface Props {
   lastHits: OcrHit[]
+  barcodeCount: number
   scanTimeMs: number
 }
 
-export default function DebugOverlay({ lastHits, scanTimeMs }: Props) {
+export default function DebugOverlay({ lastHits, barcodeCount, scanTimeMs }: Props) {
   const [expanded, setExpanded] = useState(false)
 
   const coconutHits = lastHits.filter(h => h.isCoconut)
@@ -18,13 +19,13 @@ export default function DebugOverlay({ lastHits, scanTimeMs }: Props) {
         onClick={() => setExpanded(!expanded)}
         className="bg-black/70 text-white text-xs font-mono px-3 py-1.5 rounded-full"
       >
-        {fps} fps · {lastHits.length} words · {coconutHits.length} hits
+        {fps} fps · {lastHits.length} words · {coconutHits.length} hits · {barcodeCount} bc
       </button>
 
       {expanded && (
         <div className="bg-black/85 text-white text-xs font-mono p-3 rounded-lg mt-2 max-h-60 overflow-y-auto max-w-[90vw]">
           <div className="mb-2 text-green-400">
-            Scan: {scanTimeMs}ms · {lastHits.length} words · {coconutHits.length} coconut
+            Scan: {scanTimeMs}ms · {lastHits.length} words · {coconutHits.length} coconut · {barcodeCount} barcodes
           </div>
 
           {coconutHits.length > 0 && (

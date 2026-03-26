@@ -11,14 +11,26 @@ import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
 
+import com.google.android.gms.tasks.Task;
+import com.google.android.gms.tasks.Tasks;
+import com.google.mlkit.vision.barcode.BarcodeScanner;
+import com.google.mlkit.vision.barcode.BarcodeScannerOptions;
+import com.google.mlkit.vision.barcode.BarcodeScanning;
+import com.google.mlkit.vision.barcode.common.Barcode;
 import com.google.mlkit.vision.common.InputImage;
 import com.google.mlkit.vision.text.Text;
 import com.google.mlkit.vision.text.TextRecognition;
 import com.google.mlkit.vision.text.TextRecognizer;
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions;
 
+import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+
 @CapacitorPlugin(name = "Ocr")
 public class OcrPlugin extends Plugin {
+
+    private static final ExecutorService executor = Executors.newSingleThreadExecutor();
 
     @PluginMethod
     public void recognizeText(PluginCall call) {
@@ -42,8 +54,6 @@ public class OcrPlugin extends Plugin {
         }
 
         // Center-crop the frame to match the viewport aspect ratio.
-        // The camera preview plugin displays a center-cropped view but
-        // captureSample() returns the full uncropped frame.
         int vpW = call.getInt("viewportWidth", 0);
         int vpH = call.getInt("viewportHeight", 0);
 
@@ -51,40 +61,90 @@ public class OcrPlugin extends Plugin {
             bitmap = centerCropToAspect(bitmap, vpW, vpH);
         }
 
-        int imgWidth = bitmap.getWidth();
-        int imgHeight = bitmap.getHeight();
+        final int imgWidth = bitmap.getWidth();
+        final int imgHeight = bitmap.getHeight();
 
         InputImage image = InputImage.fromBitmap(bitmap, 0);
-        TextRecognizer recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS);
 
-        recognizer.process(image)
-            .addOnSuccessListener(visionText -> {
+        // Run text recognition and barcode scanning in parallel
+        TextRecognizer textRecognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS);
+        BarcodeScanner barcodeScanner = BarcodeScanning.getClient(
+            new BarcodeScannerOptions.Builder()
+                .enableAllPotentialBarcodes()
+                .build()
+        );
+
+        Task<Text> textTask = textRecognizer.process(image);
+        Task<List<Barcode>> barcodeTask = barcodeScanner.process(image);
+
+        Tasks.whenAllComplete(textTask, barcodeTask)
+            .addOnCompleteListener(executor, tasks -> {
                 JSArray words = new JSArray();
+                JSArray barcodes = new JSArray();
 
-                for (Text.TextBlock block : visionText.getTextBlocks()) {
-                    for (Text.Line line : block.getLines()) {
-                        for (Text.Element element : line.getElements()) {
-                            android.graphics.Rect box = element.getBoundingBox();
-                            if (box == null) continue;
+                // Collect text results
+                if (textTask.isSuccessful()) {
+                    Text visionText = textTask.getResult();
+                    for (Text.TextBlock block : visionText.getTextBlocks()) {
+                        for (Text.Line line : block.getLines()) {
+                            for (Text.Element element : line.getElements()) {
+                                android.graphics.Rect box = element.getBoundingBox();
+                                if (box == null) continue;
 
-                            JSObject word = new JSObject();
-                            word.put("text", element.getText());
-                            word.put("x", (double) box.left / imgWidth);
-                            word.put("y", (double) box.top / imgHeight);
-                            word.put("w", (double) box.width() / imgWidth);
-                            word.put("h", (double) box.height() / imgHeight);
-                            words.put(word);
+                                JSObject word = new JSObject();
+                                word.put("text", element.getText());
+                                word.put("x", (double) box.left / imgWidth);
+                                word.put("y", (double) box.top / imgHeight);
+                                word.put("w", (double) box.width() / imgWidth);
+                                word.put("h", (double) box.height() / imgHeight);
+                                words.put(word);
+                            }
                         }
+                    }
+                }
+
+                // Collect barcode results
+                if (barcodeTask.isSuccessful()) {
+                    for (Barcode barcode : barcodeTask.getResult()) {
+                        android.graphics.Rect box = barcode.getBoundingBox();
+                        String rawValue = barcode.getRawValue();
+                        if (box == null || rawValue == null) continue;
+
+                        JSObject bc = new JSObject();
+                        bc.put("value", rawValue);
+                        bc.put("format", formatName(barcode.getFormat()));
+                        bc.put("x", (double) box.left / imgWidth);
+                        bc.put("y", (double) box.top / imgHeight);
+                        bc.put("w", (double) box.width() / imgWidth);
+                        bc.put("h", (double) box.height() / imgHeight);
+                        barcodes.put(bc);
                     }
                 }
 
                 JSObject result = new JSObject();
                 result.put("words", words);
+                result.put("barcodes", barcodes);
                 call.resolve(result);
-            })
-            .addOnFailureListener(e -> {
-                call.reject("ML Kit text recognition failed: " + e.getMessage());
             });
+    }
+
+    private static String formatName(int format) {
+        switch (format) {
+            case Barcode.FORMAT_CODE_128: return "CODE_128";
+            case Barcode.FORMAT_CODE_39: return "CODE_39";
+            case Barcode.FORMAT_CODE_93: return "CODE_93";
+            case Barcode.FORMAT_CODABAR: return "CODABAR";
+            case Barcode.FORMAT_EAN_13: return "EAN_13";
+            case Barcode.FORMAT_EAN_8: return "EAN_8";
+            case Barcode.FORMAT_ITF: return "ITF";
+            case Barcode.FORMAT_UPC_A: return "UPC_A";
+            case Barcode.FORMAT_UPC_E: return "UPC_E";
+            case Barcode.FORMAT_QR_CODE: return "QR_CODE";
+            case Barcode.FORMAT_DATA_MATRIX: return "DATA_MATRIX";
+            case Barcode.FORMAT_AZTEC: return "AZTEC";
+            case Barcode.FORMAT_PDF417: return "PDF417";
+            default: return "UNKNOWN";
+        }
     }
 
     /**
@@ -100,13 +160,11 @@ public class OcrPlugin extends Plugin {
         int cropW, cropH, cropX, cropY;
 
         if (srcAspect > targetAspect) {
-            // Frame is wider than viewport — crop horizontally
             cropH = srcH;
             cropW = (int) (srcH * targetAspect);
             cropX = (srcW - cropW) / 2;
             cropY = 0;
         } else {
-            // Frame is taller than viewport — crop vertically
             cropW = srcW;
             cropH = (int) (srcW / targetAspect);
             cropX = 0;

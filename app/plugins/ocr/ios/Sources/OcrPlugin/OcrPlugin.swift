@@ -23,18 +23,12 @@ public class OcrPlugin: CAPPlugin, CAPBridgedPlugin {
         let vpH = call.getInt("viewportHeight") ?? 0
         let inputImage = centerCropToAspect(cgImage, targetW: vpW, targetH: vpH)
 
-        let request = VNRecognizeTextRequest { request, error in
-            if let error = error {
-                call.reject("Vision error: \(error.localizedDescription)")
-                return
-            }
+        var words: [[String: Any]] = []
+        var barcodes: [[String: Any]] = []
 
-            guard let observations = request.results as? [VNRecognizedTextObservation] else {
-                call.resolve(["words": []])
-                return
-            }
-
-            var words: [[String: Any]] = []
+        // Text recognition request
+        let textRequest = VNRecognizeTextRequest { request, _ in
+            guard let observations = request.results as? [VNRecognizedTextObservation] else { return }
 
             for observation in observations {
                 guard let candidate = observation.topCandidates(1).first else { continue }
@@ -60,16 +54,55 @@ public class OcrPlugin: CAPPlugin, CAPBridgedPlugin {
                     ])
                 }
             }
+        }
+        textRequest.recognitionLevel = .accurate
+        textRequest.usesLanguageCorrection = false
 
-            call.resolve(["words": words])
+        // Barcode detection request
+        let barcodeRequest = VNDetectBarcodesRequest { request, _ in
+            guard let observations = request.results as? [VNBarcodeObservation] else { return }
+
+            for observation in observations {
+                guard let payload = observation.payloadStringValue else { continue }
+                let rect = observation.boundingBox
+                barcodes.append([
+                    "value": payload,
+                    "format": self.formatName(observation.symbology),
+                    "x": rect.origin.x,
+                    "y": 1.0 - rect.origin.y - rect.height,
+                    "w": rect.width,
+                    "h": rect.height
+                ])
+            }
         }
 
-        request.recognitionLevel = .accurate
-        request.usesLanguageCorrection = false
-
+        // Run both requests in parallel on the same image
         DispatchQueue.global(qos: .userInitiated).async {
             let handler = VNImageRequestHandler(cgImage: inputImage, options: [:])
-            try? handler.perform([request])
+            try? handler.perform([textRequest, barcodeRequest])
+
+            call.resolve([
+                "words": words,
+                "barcodes": barcodes
+            ])
+        }
+    }
+
+    private func formatName(_ symbology: VNBarcodeSymbology) -> String {
+        switch symbology {
+        case .code128: return "CODE_128"
+        case .code39: return "CODE_39"
+        case .code93: return "CODE_93"
+        case .codabar: return "CODABAR"
+        case .ean13: return "EAN_13"
+        case .ean8: return "EAN_8"
+        case .itf14: return "ITF"
+        case .upce: return "UPC_E"
+        case .qr: return "QR_CODE"
+        case .dataMatrix: return "DATA_MATRIX"
+        case .aztec: return "AZTEC"
+        case .pdf417: return "PDF417"
+        default: return "UNKNOWN"
         }
     }
 
@@ -88,13 +121,11 @@ public class OcrPlugin: CAPPlugin, CAPBridgedPlugin {
         let cropY: Int
 
         if srcAspect > targetAspect {
-            // Frame wider than viewport — crop horizontally
             cropH = srcH
             cropW = Int(Double(srcH) * targetAspect)
             cropX = (srcW - cropW) / 2
             cropY = 0
         } else {
-            // Frame taller than viewport — crop vertically
             cropW = srcW
             cropH = Int(Double(srcW) / targetAspect)
             cropX = 0

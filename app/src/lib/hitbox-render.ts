@@ -1,6 +1,7 @@
 import type { HitboxEntry } from './types'
 
 const COCONUT_COLOR = '#ef4444'
+const BARCODE_COLOR = '#9ca3af'
 
 /** WCAG relative luminance for a hex color. */
 function relativeLuminance(hex: string): number {
@@ -49,10 +50,9 @@ export function drawHitboxes(
   const lineWidth = 5
   const outset = lineWidth / 2
   const cornerRadius = 6
-  const color = COCONUT_COLOR
-
   for (const entry of entries) {
-    const { x, y, w, h, label } = entry
+    const { x, y, w, h, label, kind } = entry
+    const color = kind === 'barcode' ? BARCODE_COLOR : COCONUT_COLOR
 
     // Outset so border doesn't cover text
     const rx = x - outset
