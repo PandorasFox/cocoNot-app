@@ -1,7 +1,7 @@
 import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
-  appId: 'com.coconot.app',
+  appId: 'pink.hecate.coconot',
   appName: 'CocoNot',
   webDir: '.web-dist',
   ios: {

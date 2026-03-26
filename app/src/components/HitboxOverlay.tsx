@@ -1,5 +1,6 @@
 import { useRef, useEffect, useCallback } from 'react'
 import type { HitboxEntry } from '../lib/types'
+import { getBaseUrl } from '../lib/bundle'
 import { drawHitboxes } from '../lib/hitbox-render'
 
 interface Props {
@@ -9,6 +10,8 @@ interface Props {
 export default function HitboxOverlay({ entries }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const sizedRef = useRef(false)
+  const entriesRef = useRef<HitboxEntry[]>(entries)
+  entriesRef.current = entries
 
   const ensureSize = useCallback(() => {
     const canvas = canvasRef.current
@@ -36,11 +39,24 @@ export default function HitboxOverlay({ entries }: Props) {
     drawHitboxes(ctx, window.innerWidth, window.innerHeight, entries)
   }, [entries, ensureSize])
 
+  const handleClick = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
+    const x = e.clientX
+    const y = e.clientY
+    for (const entry of entriesRef.current) {
+      if (!entry.code) continue
+      if (x >= entry.x && x <= entry.x + entry.w && y >= entry.y && y <= entry.y + entry.h) {
+        window.open(`${getBaseUrl()}${entry.code}`, '_system')
+        return
+      }
+    }
+  }, [])
+
   return (
     <canvas
       ref={canvasRef}
-      className="fixed inset-0 pointer-events-none"
+      className="fixed inset-0"
       style={{ zIndex: 10 }}
+      onClick={handleClick}
     />
   )
 }

@@ -18,4 +18,6 @@ export interface HitboxEntry {
   h: number
   label: string
   lastSeenAt: number
+  /** Raw barcode value — used to construct Open Food Facts URL. */
+  code?: string
 }

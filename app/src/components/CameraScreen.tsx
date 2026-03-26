@@ -2,8 +2,10 @@ import { useState, useEffect, useRef } from 'react'
 import type { OcrHit, HitboxEntry } from '../lib/types'
 import type { BarcodeHit } from '../lib/ocr-bridge'
 import { startCamera, stopCamera, captureFrame } from '../lib/camera-bridge'
+import { lookupBarcode } from '../lib/bundle'
 import { upsertHit } from '../lib/hitbox-merge'
 import { scanFrame } from '../lib/ocr-bridge'
+import BundlePrompt from './BundlePrompt'
 import HitboxOverlay from './HitboxOverlay'
 import DebugOverlay from './DebugOverlay'
 
@@ -87,14 +89,16 @@ export default function CameraScreen() {
           for (const bc of barcodes) {
             if (!bc.value.trim()) continue
             const key = barcodeKey(bc, screenW, screenH)
+            const product = lookupBarcode(bc.value)
             upsertHit(map, {
               key,
-              kind: 'barcode',
+              kind: product?.coconut === 'y' ? 'coconut' : 'barcode',
               x: bc.x * screenW,
               y: bc.y * screenH,
               w: bc.w * screenW,
               h: bc.h * screenH,
-              label: bc.value,
+              label: product?.name ?? bc.value,
+              code: bc.value,
               lastSeenAt: now,
             }, now)
           }
@@ -135,8 +139,17 @@ export default function CameraScreen() {
 
     init()
 
+    // Restart camera when returning from background (e.g. after opening browser)
+    function onResume() {
+      if (document.visibilityState === 'visible') {
+        startCamera().catch(() => {})
+      }
+    }
+    document.addEventListener('visibilitychange', onResume)
+
     return () => {
       aliveRef.current = false
+      document.removeEventListener('visibilitychange', onResume)
       stopCamera().catch(() => {})
     }
   }, [])
@@ -158,6 +171,8 @@ export default function CameraScreen() {
       </div>
 
       <DebugOverlay lastHits={lastHits} barcodeCount={barcodeCount} scanTimeMs={scanTimeMs} />
+
+      <BundlePrompt />
 
       {error && (
         <div className="fixed inset-0 flex items-center justify-center z-30 bg-black/80">
