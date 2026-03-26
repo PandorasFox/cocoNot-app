@@ -7,6 +7,7 @@ export async function startCamera(): Promise<void> {
     toBack: true,
     storeToFile: false,
     enableHighResolution: false,
+    disableAudio: true,
     width: window.screen.width,
     height: window.screen.height,
   })
@@ -17,8 +18,8 @@ export async function stopCamera(): Promise<void> {
   await CameraPreview.stop()
 }
 
-/** Capture a single frame as a base64 JPEG string (no data URI prefix). */
+/** Grab a preview frame as base64 JPEG. Silent, no shutter, no autofocus. */
 export async function captureFrame(): Promise<string> {
-  const result = await CameraPreview.capture({ quality: 80 })
+  const result = await CameraPreview.captureSample({ quality: 60 })
   return result.value
 }

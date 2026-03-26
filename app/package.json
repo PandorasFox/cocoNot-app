@@ -10,12 +10,12 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
-    "postinstall": "sh scripts/patch-image-to-text-spm.sh",
+    "postinstall": "sh scripts/patch-camera-preview-spm.sh",
     "cap:sync": "npm run build && npx cap sync"
   },
   "dependencies": {
     "@capacitor-community/camera-preview": "^7.0.5",
-    "@capacitor-community/image-to-text": "^8.0.0",
+    "coconot-ocr": "file:plugins/ocr",
     "@capacitor/android": "^8.3.0",
     "@capacitor/cli": "^8.3.0",
     "@capacitor/core": "^8.3.0",

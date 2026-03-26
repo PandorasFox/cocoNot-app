@@ -1,4 +1,4 @@
-import { useRef, useEffect } from 'react'
+import { useRef, useEffect, useCallback } from 'react'
 import type { HitboxEntry } from '../lib/types'
 import { drawHitboxes } from '../lib/hitbox-render'
 
@@ -8,26 +8,33 @@ interface Props {
 
 export default function HitboxOverlay({ entries }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
+  const sizedRef = useRef(false)
 
-  useEffect(() => {
+  const ensureSize = useCallback(() => {
     const canvas = canvasRef.current
     if (!canvas) return
-
     const dpr = window.devicePixelRatio || 1
     const dw = window.innerWidth
     const dh = window.innerHeight
-
+    const needsResize = canvas.width !== dw * dpr || canvas.height !== dh * dpr
+    if (!needsResize && sizedRef.current) return
     canvas.width = dw * dpr
     canvas.height = dh * dpr
     canvas.style.width = `${dw}px`
     canvas.style.height = `${dh}px`
+    sizedRef.current = true
+  }, [])
 
+  useEffect(() => {
+    ensureSize()
+    const canvas = canvasRef.current
+    if (!canvas) return
     const ctx = canvas.getContext('2d')
     if (!ctx) return
-
-    ctx.scale(dpr, dpr)
-    drawHitboxes(ctx, dw, dh, entries)
-  }, [entries])
+    const dpr = window.devicePixelRatio || 1
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+    drawHitboxes(ctx, window.innerWidth, window.innerHeight, entries)
+  }, [entries, ensureSize])
 
   return (
     <canvas
