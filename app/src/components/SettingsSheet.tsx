@@ -10,6 +10,7 @@ export default function SettingsSheet({ open, onClose }: Props) {
   const [keywords, setLocal] = useState<string[]>([])
   const [newKeyword, setNewKeyword] = useState('')
   const [geigerOn, setGeigerOn] = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState<number | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -38,26 +39,38 @@ export default function SettingsSheet({ open, onClose }: Props) {
     save(keywords.filter((_, i) => i !== idx))
   }
 
-  // Swipe-to-dismiss
+  // Swipe-to-dismiss — tracks anywhere on the sheet except interactive elements
   const dragStartY = useRef(0)
   const dragOffsetY = useRef(0)
+  const dragging = useRef(false)
   const [sheetTranslateY, setSheetTranslateY] = useState(0)
   const sheetRef = useRef<HTMLDivElement>(null)
 
+  const isInteractive = (el: EventTarget | null): boolean => {
+    if (!(el instanceof HTMLElement)) return false
+    const tag = el.tagName
+    return tag === 'INPUT' || tag === 'BUTTON' || tag === 'TEXTAREA' || el.isContentEditable
+  }
+
   const onTouchStart = useCallback((e: React.TouchEvent) => {
+    if (isInteractive(e.target)) { dragging.current = false; return }
     dragStartY.current = e.touches[0].clientY
     dragOffsetY.current = 0
+    dragging.current = true
   }, [])
 
   const onTouchMove = useCallback((e: React.TouchEvent) => {
+    if (!dragging.current) return
     const dy = e.touches[0].clientY - dragStartY.current
-    // Only allow dragging downward
     dragOffsetY.current = Math.max(0, dy)
-    setSheetTranslateY(dragOffsetY.current)
+    if (dragOffsetY.current > 8) {
+      setSheetTranslateY(dragOffsetY.current)
+    }
   }, [])
 
   const onTouchEnd = useCallback(() => {
-    // Dismiss if dragged more than 80px
+    if (!dragging.current) return
+    dragging.current = false
     if (dragOffsetY.current > 80) {
       onClose()
     }
@@ -85,15 +98,13 @@ export default function SettingsSheet({ open, onClose }: Props) {
           transform: `translateY(${sheetTranslateY}px)`,
           transition: sheetTranslateY === 0 ? 'transform 0.2s ease-out' : 'none',
         }}
+        onTouchStart={onTouchStart}
+        onTouchMove={onTouchMove}
+        onTouchEnd={onTouchEnd}
       >
         <div className="h-full bg-gray-950/95 rounded-t-2xl flex flex-col">
-          {/* Handle — drag target */}
-          <div
-            className="flex justify-center pt-3 pb-1 cursor-grab"
-            onTouchStart={onTouchStart}
-            onTouchMove={onTouchMove}
-            onTouchEnd={onTouchEnd}
-          >
+          {/* Handle */}
+          <div className="flex justify-center pt-3 pb-1">
             <div className="w-10 h-1 bg-gray-600 rounded-full" />
           </div>
 
@@ -107,12 +118,21 @@ export default function SettingsSheet({ open, onClose }: Props) {
             {keywords.map((kw, i) => (
               <div key={i} className="flex items-center justify-between py-2 border-b border-gray-800">
                 <span className="text-white text-sm">{kw}</span>
-                <button
-                  onClick={() => removeKeyword(i)}
-                  className="text-gray-500 hover:text-red-400 text-lg px-2"
-                >
-                  &times;
-                </button>
+                {confirmDelete === i ? (
+                  <button
+                    onClick={() => { removeKeyword(i); setConfirmDelete(null) }}
+                    className="text-red-400 text-xs font-medium px-2 py-0.5 bg-red-400/10 rounded"
+                  >
+                    delete
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => setConfirmDelete(i)}
+                    className="text-gray-500 text-lg px-2"
+                  >
+                    &times;
+                  </button>
+                )}
               </div>
             ))}
 

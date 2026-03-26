@@ -53,12 +53,12 @@ export class ScanEngine {
     this.alive = false
     this.paused = false
     document.removeEventListener('visibilitychange', this.onVisChange)
-    stopCamera().catch(() => {})
+    this.safeStopCamera()
   }
 
   async pause(): Promise<void> {
     this.paused = true
-    await stopCamera().catch(() => {})
+    this.safeStopCamera()
   }
 
   async resume(): Promise<void> {
@@ -67,9 +67,13 @@ export class ScanEngine {
       await startCamera()
       this.paused = false
       this.loop()
-    } catch (err) {
-      this.opts.onError(err instanceof Error ? err : new Error(String(err)))
+    } catch {
+      // Camera may be unavailable after resume — not fatal
     }
+  }
+
+  private safeStopCamera(): void {
+    try { stopCamera().catch(() => {}) } catch { /* bridge may be dead */ }
   }
 
   private async loop(): Promise<void> {
@@ -92,7 +96,11 @@ export class ScanEngine {
           scanTimeMs: Math.round(performance.now() - t0),
         })
       } catch (err) {
-        this.opts.onError(err instanceof Error ? err : new Error(String(err)))
+        // During teardown, the bridge or WebView may be gone — swallow silently
+        if (!this.alive) break
+        try {
+          this.opts.onError(err instanceof Error ? err : new Error(String(err)))
+        } catch { /* callback may be dead too */ }
       }
 
       const elapsed = performance.now() - t0
