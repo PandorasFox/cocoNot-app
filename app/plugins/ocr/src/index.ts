@@ -6,4 +6,4 @@ const Ocr = registerPlugin<OcrPlugin>('Ocr', {
 })
 
 export { Ocr }
-export type { OcrPlugin, OcrWord, OcrRegion } from './definitions'
+export type { OcrPlugin, OcrWord } from './definitions'

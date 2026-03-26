@@ -1,16 +1,15 @@
 import { Ocr } from 'coconot-ocr'
-import type { OcrRegion } from 'coconot-ocr'
 import type { OcrHit } from './types'
 import { tagCoconutWords, type WordBox } from './coconut'
 
 /**
  * Run native OCR on a base64 image and return classified hits.
  * Returns word-level results with normalized 0-1 coords (top-left origin).
- * If region is provided, only that portion of the image is scanned,
- * but returned coords are in full-frame space.
+ * The native plugin center-crops the frame to match the viewport aspect
+ * ratio, so returned coords map directly to screen space.
  */
-export async function recognizeText(base64: string, region?: OcrRegion): Promise<OcrHit[]> {
-  const result = await Ocr.recognizeText({ base64, region })
+export async function recognizeText(base64: string, viewportWidth: number, viewportHeight: number): Promise<OcrHit[]> {
+  const result = await Ocr.recognizeText({ base64, viewportWidth, viewportHeight })
 
   const words: WordBox[] = result.words.map(w => ({
     text: w.text,

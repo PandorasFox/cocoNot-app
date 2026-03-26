@@ -23,5 +23,9 @@ node_modules
 *.sw?
 
 # Capacitor native projects (generated)
-ios/
-android/
+/ios/
+/android/
+
+# Plugin build artifacts
+plugins/*/android/build/
+plugins/*/dist/

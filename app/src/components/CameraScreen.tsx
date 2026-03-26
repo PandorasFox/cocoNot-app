@@ -1,17 +1,13 @@
 import { useState, useEffect, useRef } from 'react'
 import type { OcrHit, HitboxEntry } from '../lib/types'
-import type { OcrRegion } from 'coconot-ocr'
 import { startCamera, stopCamera, captureFrame } from '../lib/camera-bridge'
+import { mergeHit } from '../lib/hitbox-merge'
 import { recognizeText } from '../lib/ocr-bridge'
 import HitboxOverlay from './HitboxOverlay'
-import ScanZoneOverlay from './ScanZoneOverlay'
 import DebugOverlay from './DebugOverlay'
 
 const HITBOX_TTL = 3000
 const SCAN_COOLDOWN = 150
-
-/** Center 50% of the frame. */
-const SCAN_ZONE: OcrRegion = { x: 0.15, y: 0.25, w: 0.7, h: 0.5 }
 
 function hitKey(hit: OcrHit): string {
   const gx = Math.round(hit.x / 20) * 20
@@ -37,13 +33,8 @@ export default function CameraScreen() {
   const [scanning, setScanning] = useState(false)
   const [lastHits, setLastHits] = useState<OcrHit[]>([])
   const [scanTimeMs, setScanTimeMs] = useState(0)
-  const [zoneMode, setZoneMode] = useState(true)
   const hitboxMapRef = useRef(new Map<string, HitboxEntry>())
-  const zoneModeRef = useRef(true)
   const aliveRef = useRef(true)
-
-  // Keep ref in sync so scan loop reads latest value without re-mounting
-  useEffect(() => { zoneModeRef.current = zoneMode }, [zoneMode])
 
   useEffect(() => {
     aliveRef.current = true
@@ -55,13 +46,12 @@ export default function CameraScreen() {
 
         try {
           const base64 = await captureFrame()
-          const region = zoneModeRef.current ? SCAN_ZONE : undefined
-          const hits = await recognizeText(base64, region)
+          const screenW = window.innerWidth
+          const screenH = window.innerHeight
+          const hits = await recognizeText(base64, screenW, screenH)
 
           if (!aliveRef.current) break
 
-          const screenW = window.innerWidth
-          const screenH = window.innerHeight
           const screenHits = toScreenSpace(hits, screenW, screenH)
           const now = Date.now()
 
@@ -71,7 +61,7 @@ export default function CameraScreen() {
           for (const hit of screenHits) {
             if (!hit.isCoconut) continue
             const key = hitKey(hit)
-            map.set(key, {
+            mergeHit(map, {
               key,
               x: hit.x,
               y: hit.y,
@@ -79,7 +69,7 @@ export default function CameraScreen() {
               h: hit.h,
               label: hit.text.toUpperCase(),
               lastSeenAt: now,
-            })
+            }, now)
           }
 
           for (const [key, entry] of map) {
@@ -128,8 +118,6 @@ export default function CameraScreen() {
     <div className="fixed inset-0">
       <HitboxOverlay entries={entries} />
 
-      {zoneMode && <ScanZoneOverlay region={SCAN_ZONE} />}
-
       <div className="fixed top-[max(1rem,env(safe-area-inset-top))] left-1/2 -translate-x-1/2 z-20">
         {coconutDetected ? (
           <div className="bg-red-600 text-white font-bold text-sm px-4 py-2 rounded-full shadow-lg animate-pulse">
@@ -141,15 +129,6 @@ export default function CameraScreen() {
           </div>
         ) : null}
       </div>
-
-      {/* Scan zone toggle */}
-      <button
-        onClick={() => setZoneMode(z => !z)}
-        className="fixed top-[max(1rem,env(safe-area-inset-top))] right-3 z-20
-                   bg-black/60 text-white text-xs font-mono px-3 py-1.5 rounded-full"
-      >
-        {zoneMode ? 'ZONE' : 'FULL'}
-      </button>
 
       <DebugOverlay lastHits={lastHits} scanTimeMs={scanTimeMs} />
 
