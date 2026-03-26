@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import { getKeywords, setKeywords, getGeigerEnabled, setGeigerEnabled } from '../lib/settings'
 
 interface Props {
@@ -38,6 +38,33 @@ export default function SettingsSheet({ open, onClose }: Props) {
     save(keywords.filter((_, i) => i !== idx))
   }
 
+  // Swipe-to-dismiss
+  const dragStartY = useRef(0)
+  const dragOffsetY = useRef(0)
+  const [sheetTranslateY, setSheetTranslateY] = useState(0)
+  const sheetRef = useRef<HTMLDivElement>(null)
+
+  const onTouchStart = useCallback((e: React.TouchEvent) => {
+    dragStartY.current = e.touches[0].clientY
+    dragOffsetY.current = 0
+  }, [])
+
+  const onTouchMove = useCallback((e: React.TouchEvent) => {
+    const dy = e.touches[0].clientY - dragStartY.current
+    // Only allow dragging downward
+    dragOffsetY.current = Math.max(0, dy)
+    setSheetTranslateY(dragOffsetY.current)
+  }, [])
+
+  const onTouchEnd = useCallback(() => {
+    // Dismiss if dragged more than 80px
+    if (dragOffsetY.current > 80) {
+      onClose()
+    }
+    setSheetTranslateY(0)
+    dragOffsetY.current = 0
+  }, [onClose])
+
   if (!open) return null
 
   return (
@@ -50,11 +77,23 @@ export default function SettingsSheet({ open, onClose }: Props) {
       />
 
       {/* Sheet — bottom 2/3 */}
-      <div className="fixed bottom-0 left-0 right-0 z-50 h-2/3"
-           style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
+      <div
+        ref={sheetRef}
+        className="fixed bottom-0 left-0 right-0 z-50 h-2/3"
+        style={{
+          paddingBottom: 'env(safe-area-inset-bottom)',
+          transform: `translateY(${sheetTranslateY}px)`,
+          transition: sheetTranslateY === 0 ? 'transform 0.2s ease-out' : 'none',
+        }}
+      >
         <div className="h-full bg-gray-950/95 rounded-t-2xl flex flex-col">
-          {/* Handle */}
-          <div className="flex justify-center pt-3 pb-1">
+          {/* Handle — drag target */}
+          <div
+            className="flex justify-center pt-3 pb-1 cursor-grab"
+            onTouchStart={onTouchStart}
+            onTouchMove={onTouchMove}
+            onTouchEnd={onTouchEnd}
+          >
             <div className="w-10 h-1 bg-gray-600 rounded-full" />
           </div>
 
