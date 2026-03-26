@@ -1,157 +1,89 @@
-import { useState, useEffect, useRef } from 'react'
-import type { OcrHit, HitboxEntry } from '../lib/types'
-import type { BarcodeHit } from '../lib/ocr-bridge'
-import { startCamera, stopCamera, captureFrame } from '../lib/camera-bridge'
-import { lookupBarcode } from '../lib/bundle'
-import { upsertHit } from '../lib/hitbox-merge'
-import { scanFrame } from '../lib/ocr-bridge'
+import { useState, useEffect, useRef, useCallback } from 'react'
+import type { OcrHit } from '../lib/types'
+import { ScanEngine } from '../lib/scan-engine'
+import { HitboxManager } from '../lib/hitbox-manager'
+import { GeigerEngine } from '../lib/geiger'
 import BundlePrompt from './BundlePrompt'
 import HitboxOverlay from './HitboxOverlay'
 import DebugOverlay from './DebugOverlay'
+import SettingsSheet from './SettingsSheet'
 
-const HITBOX_TTL = 3000
 const SCAN_COOLDOWN = 150
 
-function hitKey(hit: OcrHit): string {
-  const gx = Math.round(hit.x / 20) * 20
-  const gy = Math.round(hit.y / 20) * 20
-  return `${hit.text.toLowerCase()}@${gx},${gy}`
-}
-
-function barcodeKey(bc: BarcodeHit, screenW: number, screenH: number): string {
-  const gx = Math.round((bc.x * screenW) / 40) * 40
-  const gy = Math.round((bc.y * screenH) / 40) * 40
-  return `barcode:${bc.value}@${gx},${gy}`
-}
-
-/** Plugin returns normalized 0-1 coords, top-left origin. Scale to screen pixels. */
-function toScreenSpace(hits: OcrHit[], screenW: number, screenH: number): OcrHit[] {
-  return hits.map(h => ({
-    ...h,
-    x: h.x * screenW,
-    y: h.y * screenH,
-    w: h.w * screenW,
-    h: h.h * screenH,
-  }))
-}
-
 export default function CameraScreen() {
-  const [entries, setEntries] = useState<HitboxEntry[]>([])
+  const [entries, setEntries] = useState<import('../lib/types').HitboxEntry[]>([])
   const [coconutDetected, setCoconutDetected] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [scanning, setScanning] = useState(false)
   const [lastHits, setLastHits] = useState<OcrHit[]>([])
   const [barcodeCount, setBarcodeCount] = useState(0)
   const [scanTimeMs, setScanTimeMs] = useState(0)
-  const hitboxMapRef = useRef(new Map<string, HitboxEntry>())
-  const aliveRef = useRef(true)
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const engineRef = useRef<ScanEngine | null>(null)
+  const managerRef = useRef<HitboxManager | null>(null)
+  const geigerRef = useRef<GeigerEngine | null>(null)
 
   useEffect(() => {
-    aliveRef.current = true
-    const map = hitboxMapRef.current
+    const geiger = new GeigerEngine()
+    geigerRef.current = geiger
 
-    async function scanLoop() {
-      while (aliveRef.current) {
-        const t0 = performance.now()
+    const manager = new HitboxManager(({ entries, coconutDetected }) => {
+      setEntries(entries)
+      setCoconutDetected(coconutDetected)
+      geiger.update(coconutDetected)
+    })
 
-        try {
-          const base64 = await captureFrame()
-          const screenW = window.innerWidth
-          const screenH = window.innerHeight
-          const { ocrHits, barcodes } = await scanFrame(base64, screenW, screenH)
+    const engine = new ScanEngine({
+      cooldown: SCAN_COOLDOWN,
+      onResult: ({ ocrHits, barcodes, screenW, screenH, scanTimeMs }) => {
+        const screenHits = ocrHits.map(h => ({
+          ...h,
+          x: h.x * screenW,
+          y: h.y * screenH,
+          w: h.w * screenW,
+          h: h.h * screenH,
+        }))
+        setLastHits(screenHits)
+        setBarcodeCount(barcodes.length)
+        setScanTimeMs(scanTimeMs)
+        manager.ingest(ocrHits, barcodes, screenW, screenH)
+      },
+      onError: (err) => {
+        console.error('Scan error:', err)
+      },
+    })
 
-          if (!aliveRef.current) break
+    engineRef.current = engine
+    managerRef.current = manager
 
-          const screenHits = toScreenSpace(ocrHits, screenW, screenH)
-          const now = Date.now()
-
-          setLastHits(screenHits)
-          setBarcodeCount(barcodes.length)
-          setScanTimeMs(Math.round(performance.now() - t0))
-
-          // Coconut hitboxes
-          for (const hit of screenHits) {
-            if (!hit.isCoconut) continue
-            const key = hitKey(hit)
-            upsertHit(map, {
-              key,
-              kind: 'coconut',
-              x: hit.x,
-              y: hit.y,
-              w: hit.w,
-              h: hit.h,
-              label: hit.text.toUpperCase(),
-              lastSeenAt: now,
-            }, now)
-          }
-
-          // Barcode hitboxes (skip empty values — false positives from text/patterns)
-          for (const bc of barcodes) {
-            if (!bc.value.trim()) continue
-            const key = barcodeKey(bc, screenW, screenH)
-            const product = lookupBarcode(bc.value)
-            upsertHit(map, {
-              key,
-              kind: product?.coconut === 'y' ? 'coconut' : 'barcode',
-              x: bc.x * screenW,
-              y: bc.y * screenH,
-              w: bc.w * screenW,
-              h: bc.h * screenH,
-              label: product?.name ?? bc.value,
-              code: bc.value,
-              lastSeenAt: now,
-            }, now)
-          }
-
-          for (const [key, entry] of map) {
-            if (now - entry.lastSeenAt > HITBOX_TTL) map.delete(key)
-          }
-
-          const active = Array.from(map.values())
-          setEntries(active)
-          setCoconutDetected(active.some(e => e.kind === 'coconut'))
-        } catch (err) {
-          console.error('Scan error:', err)
-          setScanTimeMs(Math.round(performance.now() - t0))
-        }
-
-        const elapsed = performance.now() - t0
-        if (elapsed < SCAN_COOLDOWN) {
-          await new Promise(r => setTimeout(r, SCAN_COOLDOWN - elapsed))
-        }
-      }
-    }
-
-    async function init() {
-      try {
-        await startCamera()
-        setScanning(true)
-        scanLoop()
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err)
+    manager.start()
+    engine.start()
+      .then(() => setScanning(true))
+      .catch((err) => {
+        const msg = err.message || String(err)
         if (msg.toLowerCase().includes('permission')) {
           setError('Camera permission denied. Please enable camera access in Settings.')
         } else {
           setError(`Camera error: ${msg}`)
         }
-      }
-    }
-
-    init()
-
-    // Restart camera when returning from background (e.g. after opening browser)
-    function onResume() {
-      if (document.visibilityState === 'visible') {
-        startCamera().catch(() => {})
-      }
-    }
-    document.addEventListener('visibilitychange', onResume)
+      })
 
     return () => {
-      aliveRef.current = false
-      document.removeEventListener('visibilitychange', onResume)
-      stopCamera().catch(() => {})
+      engine.stop()
+      manager.stop()
+      geiger.dispose()
     }
+  }, [])
+
+  const openSettings = useCallback(() => {
+    setSettingsOpen(true)
+    engineRef.current?.pause()
+  }, [])
+
+  const closeSettings = useCallback(() => {
+    setSettingsOpen(false)
+    managerRef.current?.clear()
+    engineRef.current?.resume()
   }, [])
 
   return (
@@ -170,9 +102,21 @@ export default function CameraScreen() {
         ) : null}
       </div>
 
+      {/* Settings cog */}
+      <button
+        onClick={openSettings}
+        className="fixed right-3 top-1/2 -translate-y-1/2 z-20
+                   bg-black/60 text-white w-10 h-10 rounded-full
+                   flex items-center justify-center text-lg"
+      >
+        &#9881;
+      </button>
+
       <DebugOverlay lastHits={lastHits} barcodeCount={barcodeCount} scanTimeMs={scanTimeMs} />
 
       <BundlePrompt />
+
+      <SettingsSheet open={settingsOpen} onClose={closeSettings} />
 
       {error && (
         <div className="fixed inset-0 flex items-center justify-center z-30 bg-black/80">

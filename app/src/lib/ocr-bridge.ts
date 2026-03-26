@@ -2,6 +2,7 @@ import { Ocr } from 'coconot-ocr'
 import type { BarcodeHit } from 'coconot-ocr'
 import type { OcrHit } from './types'
 import { tagCoconutWords, type WordBox } from './coconut'
+import { getKeywords } from './settings'
 
 export type { BarcodeHit }
 
@@ -24,7 +25,7 @@ export async function scanFrame(base64: string, viewportWidth: number, viewportH
   }))
 
   return {
-    ocrHits: tagCoconutWords(words),
+    ocrHits: tagCoconutWords(words, getKeywords()),
     barcodes: result.barcodes,
   }
 }

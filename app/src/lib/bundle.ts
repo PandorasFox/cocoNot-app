@@ -76,9 +76,10 @@ export async function fetchMeta(): Promise<BundleMeta> {
 export async function fetchBundle(
   onProgress?: (received: number, total: number) => void,
 ): Promise<Map<string, BundleProduct>> {
-  const res = await fetch(`${COCONOT_API}/api/bundle`, {
-    headers: { 'Accept-Encoding': 'gzip' },
-  })
+  // Server sends raw gzipped bytes as application/octet-stream (no Content-Encoding).
+  // This avoids proxy interference — Content-Length matches bytes on the wire.
+  // We decompress client-side with DecompressionStream.
+  const res = await fetch(`${COCONOT_API}/api/bundle`)
   if (!res.ok) throw new Error(`Bundle fetch: ${res.status}`)
 
   const contentLength = parseInt(res.headers.get('content-length') || '0', 10)
@@ -86,7 +87,7 @@ export async function fetchBundle(
 
   let tsv: string
   if (reader && contentLength > 0) {
-    // Stream with progress
+    // Read compressed bytes with progress tracking
     const chunks: Uint8Array[] = []
     let received = 0
     while (true) {
@@ -102,9 +103,12 @@ export async function fetchBundle(
       merged.set(chunk, offset)
       offset += chunk.length
     }
-    tsv = new TextDecoder().decode(merged)
+
+    // Decompress gzip client-side
+    const decompressed = new Blob([merged]).stream().pipeThrough(new DecompressionStream('gzip'))
+    tsv = await new Response(decompressed).text()
   } else {
-    // Fallback: no streaming
+    // Fallback: server sent uncompressed (or no content-length)
     tsv = await res.text()
   }
 
