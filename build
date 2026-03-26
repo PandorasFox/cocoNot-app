@@ -1,0 +1,61 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+GREEN='\033[0;32m'
+RED='\033[0;31m'
+YELLOW='\033[0;33m'
+BOLD='\033[1m'
+RESET='\033[0m'
+
+log()  { echo -e "${GREEN}▸${RESET} $*"; }
+die()  { echo -e "${RED}✗${RESET} $*" >&2; exit 1; }
+
+TARGET="${1:-all}"
+ROOT="$(cd "$(dirname "$0")" && pwd)"
+APP="$ROOT/app"
+DIST="$ROOT/dist"
+
+# ── Prereqs ─────────────────────────────────────────────────────
+[ -z "${JAVA_HOME:-}" ] && /usr/libexec/java_home -v 21 &>/dev/null && export JAVA_HOME="$(/usr/libexec/java_home -v 21)"
+[ -z "${ANDROID_HOME:-}" ] && [ -d "$HOME/Library/Android/sdk" ] && export ANDROID_HOME="$HOME/Library/Android/sdk"
+
+# ── Web build + sync ────────────────────────────────────────────
+cd "$APP"
+log "Building web assets..."
+npm run build --silent
+log "Syncing Capacitor..."
+npx cap sync 2>&1 | grep -v '^$' || true
+
+# ── Builders ────────────────────────────────────────────────────
+build_android() {
+  [ -z "${ANDROID_HOME:-}" ] && die "ANDROID_HOME not set."
+  log "Building Android APK..."
+  cd "$APP/android" && ./gradlew assembleDebug -q 2>&1
+  mkdir -p "$DIST"
+  ln -f "$APP/android/app/build/outputs/apk/debug/app-debug.apk" "$DIST/coconot.apk"
+  echo -e "  ${GREEN}✔${RESET} ${BOLD}dist/coconot.apk${RESET}"
+}
+
+build_ios() {
+  command -v xcodebuild &>/dev/null || die "Xcode not installed."
+  [[ "$(xcode-select -p 2>/dev/null)" == *"CommandLineTools"* ]] && die "Run: sudo xcode-select -s /Applications/Xcode.app/Contents/Developer"
+  log "Building iOS archive..."
+  mkdir -p "$DIST"
+  rm -rf "$DIST/CocoNot.xcarchive"
+  xcodebuild -project "$APP/ios/App/App.xcodeproj" -scheme App \
+    -destination 'generic/platform=iOS' -configuration Release \
+    -archivePath "$DIST/CocoNot.xcarchive" archive \
+    CODE_SIGNING_ALLOWED=NO -quiet 2>&1
+  echo -e "  ${GREEN}✔${RESET} ${BOLD}dist/CocoNot.xcarchive${RESET}"
+}
+
+# ── Run ─────────────────────────────────────────────────────────
+echo ""
+case "$TARGET" in
+  android) build_android ;;
+  ios)     build_ios ;;
+  all)     build_android; echo ""; build_ios ;;
+  *)       echo "Usage: ./build [android|ios|all]"; exit 1 ;;
+esac
+echo ""
+log "Done."
