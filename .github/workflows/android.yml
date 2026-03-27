@@ -44,11 +44,6 @@ jobs:
         working-directory: app
         run: npx cap sync android
 
-      - name: Add camera permission
-        run: |
-          sed -i 's|<uses-permission android:name="android.permission.INTERNET" />|<uses-permission android:name="android.permission.INTERNET" />\n    <uses-permission android:name="android.permission.CAMERA" />|' \
-            app/android/app/src/main/AndroidManifest.xml
-
       - name: Build APK
         working-directory: app/android
         run: ./gradlew assembleDebug
